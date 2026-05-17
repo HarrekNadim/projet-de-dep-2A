@@ -1,0 +1,14 @@
+Chapitre 1
+-"la théorie du choix social"
+-Comment est modélisé un vote
+	- ensemble des candidats C
+	- candidats vainqueurs c*
+	- ensemble des votants V
+	- classement des votants
+	- Ensembme des classements possibles sur C : S(C)
+	- mode de scrutin = fonction d'agrégation des préférences
+-pour qu'un vote soit respecter, il doit être compris et approuvéd de tous 
+
+Copeland(compte le nombre de )
+
+vote utile met en évidence l'influence des médias et des sondages

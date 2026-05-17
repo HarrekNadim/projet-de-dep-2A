@@ -1,0 +1,328 @@
+═══════════════════════════════════════════════════════════════════════
+  RÉSUMÉ DES FONCTIONS — Module de simulation de scrutins
+═══════════════════════════════════════════════════════════════════════
+
+Convention générale : les tableaux d'agents ont la forme (nb, dim)
+  nb  = nombre d'agents (votants ou candidats) — lignes
+  dim = nombre de dimensions de l'espace       — colonnes
+
+
+───────────────────────────────────────────────────────────────────────
+  UTILITAIRES GPU / CPU
+───────────────────────────────────────────────────────────────────────
+
+to_numpy(x)
+  Entrée  : tableau CuPy ou NumPy
+  Utilité : convertit un tableau en NumPy (CPU), compatible GPU/CPU
+
+to_cp(x)
+  Entrée  : tableau NumPy ou CuPy
+  Utilité : convertit un tableau en CuPy (GPU si disponible)
+
+_nom_scrutin(scrutin)
+  Entrée  : une fonction de scrutin (ou functools.partial)
+  Utilité : retourne le nom lisible de la fonction de scrutin
+
+
+───────────────────────────────────────────────────────────────────────
+  GÉNÉRATION DES DONNÉES
+───────────────────────────────────────────────────────────────────────
+
+distribution_uniforme(nb, dim=1)
+  Entrée  : nb (int) — nombre d'agents
+            dim (int) — dimension de l'espace, défaut 1
+  Utilité : génère nb agents uniformément dans [0,1]^dim
+  Retour  : tableau CuPy de forme (nb, dim)
+
+distribution_gaussienne(nb, centre=0, variance=1, dim=1)
+  Entrée  : nb (int) — nombre d'agents
+            centre (float) — moyenne de la loi normale, défaut 0
+            variance (float) — variance, défaut 1
+            dim (int) — dimension, défaut 1
+  Utilité : génère nb agents selon une loi normale N(centre, variance²)
+            indépendamment sur chaque dimension
+  Retour  : tableau CuPy de forme (nb, dim)
+
+distribution_3_pics(nb, pics=(0.2,0.5,0.8), variances=(0.05,0.05,0.05),
+                    poids=(1,1,1), dim=1)
+  Entrée  : nb (int) — nombre d'agents
+            pics (tuple) — centres des 3 gaussiennes
+            variances (tuple) — variances de chaque gaussienne
+            poids (tuple) — poids relatifs des 3 groupes
+            dim (int) — dimension, défaut 1
+  Utilité : génère nb agents selon un mélange de 3 gaussiennes
+            (distribution trimodale, utile pour simuler 3 partis)
+  Retour  : tableau CuPy de forme (nb, dim)
+
+distribution_trimodale(nb, centres=(0.2,0.5,0.8), variances=(0.05,0.05,0.05),
+                        amplitudes=(1,1,1), dim=1)
+  Entrée  : même paramètres que distribution_3_pics (noms différents)
+  Utilité : alias de distribution_3_pics avec noms de paramètres alternatifs
+  Retour  : tableau CuPy de forme (nb, dim)
+
+
+───────────────────────────────────────────────────────────────────────
+  VISUALISATION DES DISTRIBUTIONS
+───────────────────────────────────────────────────────────────────────
+
+plot_distribution(*groupes, etiquettes=None, noms_dims=None,
+                  titre=..., bins=30, alpha=0.6, afficher_kde=True,
+                  afficher_candidats=None)
+  Entrée  : *groupes — un ou plusieurs tableaux d'agents (nb, dim)
+            etiquettes — liste de noms pour chaque groupe
+            noms_dims — noms des axes
+            afficher_candidats — tableau de candidats à superposer
+  Utilité : visualise la distribution des agents
+            · dim=1 : histogramme + courbe KDE
+            · dim=2 : nuage de points 2D
+            · dim≥3 : matrice de graphiques pairwise (scatter + histogrammes)
+
+
+───────────────────────────────────────────────────────────────────────
+  DISTANCES ET TABLEAU DES PRÉFÉRENCES
+───────────────────────────────────────────────────────────────────────
+
+distances(candidats, votants)
+  Entrée  : candidats — tableau (nb_candidats, dim)
+            votants   — tableau (nb_votants, dim)
+  Utilité : calcule la distance euclidienne entre chaque votant
+            et chaque candidat
+  Retour  : matrice (nb_votants, nb_candidats) de distances
+
+tableau_des_preferences(candidats, votants)
+  Entrée  : candidats — tableau (nb_candidats, dim)
+            votants   — tableau (nb_votants, dim)
+  Utilité : construit le tableau des préférences ordonnales :
+            chaque cellule [i, j] = rang du candidat j pour le votant i
+            (rang 1 = candidat préféré = le plus proche)
+  Retour  : matrice CuPy (nb_votants, nb_candidats) d'entiers
+
+
+───────────────────────────────────────────────────────────────────────
+  SCRUTINS
+───────────────────────────────────────────────────────────────────────
+  Toutes les fonctions de scrutin :
+  Entrée  : sondage — tableau des préférences (nb_votants, nb_candidats)
+  Retour  : liste triée [score, indice_candidat] du meilleur au moins bon
+
+SM1T(sondage)
+  Utilité : scrutin majoritaire à 1 tour — chaque votant vote pour son
+            candidat préféré (rang 1), le candidat avec le plus de voix gagne
+  Retour  : classement complet de tous les candidats
+
+SM2T(sondage)
+  Utilité : scrutin majoritaire à 2 tours — premier tour identique à SM1T,
+            puis duel entre les 2 candidats en tête
+  Retour  : classement des 2 finalistes seulement
+
+Borda_classique(sondage)
+  Utilité : scrutin de Borda — chaque candidat reçoit (nb_candidats - rang)
+            points de chaque votant, le total détermine le classement
+  Retour  : classement complet de tous les candidats
+
+Borda_pondéré(sondage, poids)
+  Entrée  : sondage — tableau des préférences
+            poids (list) — liste de poids de longueur nb_candidats
+  Utilité : variante du scrutin de Borda avec des poids personnalisés
+            attribués à chaque rang
+  Retour  : classement complet de tous les candidats
+
+Copeland(sondage)
+  Utilité : scrutin de Copeland — comparaisons par paires entre tous les
+            candidats (1 point par victoire, 0.5 par égalité)
+  Retour  : classement complet de tous les candidats
+
+
+───────────────────────────────────────────────────────────────────────
+  TEST SM1T vs SM2T
+───────────────────────────────────────────────────────────────────────
+
+test_SM1T_SM2T(nb_candidats, nb_votants, nb_simulations=1000, dim=1)
+  Entrée  : nb_candidats (int) — plage de 2 à nb_candidats
+            nb_votants (int)   — plage de 3 à nb_votants
+            nb_simulations (int) — essais par combinaison, défaut 1000
+            dim (int) — dimension de l'espace, défaut 1
+  Utilité : compare SM1T et SM2T sur une grille de paramètres et affiche
+            une heatmap du nombre de cas où les gagnants diffèrent
+
+
+───────────────────────────────────────────────────────────────────────
+  SCORES DE SATISFACTION
+───────────────────────────────────────────────────────────────────────
+
+satisfaction_relative(gagnant_idx, dist, votants=None)
+  Entrée  : gagnant_idx (int) — indice du candidat gagnant
+            dist — matrice des distances (nb_votants, nb_candidats)
+  Utilité : calcule la satisfaction moyenne des votants vis-à-vis du gagnant
+            (ratio distance_favori / distance_gagnant, entre 0 et 1)
+  Retour  : float entre 0 et 1 (1 = le gagnant est le favori de tous)
+
+satisfaction_a_priori(gagnant_idx, tdp, votants=None)
+  Entrée  : gagnant_idx (int) — indice du candidat gagnant
+            tdp — tableau des préférences (nb_votants, nb_candidats)
+  Utilité : satisfaction basée sur les rangs ordinaux (sans distances réelles)
+            score = 1 - (rang - 1) / (nb_candidats - 1), moyenné sur tous
+  Retour  : float entre 0 et 1
+
+satisfaction_maximale(dist)
+  Entrée  : dist — matrice des distances (nb_votants, nb_candidats)
+  Utilité : calcule la satisfaction maximale atteignable parmi tous les
+            candidats (borne supérieure théorique)
+  Retour  : float (meilleure satisfaction possible)
+
+
+───────────────────────────────────────────────────────────────────────
+  STRATÉGIES DE MANIPULATION
+───────────────────────────────────────────────────────────────────────
+
+_construire_bulletin_strategique(bulletins_coalition_np, favori, cible,
+                                  nb_candidats)
+  Entrée  : bulletins_coalition_np — bulletins des membres de la coalition
+            favori (int) — candidat à faire gagner (mis en rang 1)
+            cible (int)  — candidat à pénaliser (mis en dernier rang)
+            nb_candidats (int)
+  Utilité : fonction interne — construit un bulletin stratégique unique :
+            favori → rang 1, cible → dernier rang, autres en ordre moyen
+  Retour  : liste représentant un bulletin de vote
+
+manipulation_naïve(tdp_honnete, dist, scrutin)
+  Entrée  : tdp_honnete — tableau des préférences honnête
+            dist — matrice des distances
+            scrutin — fonction de scrutin à tester
+  Utilité : teste si une manipulation est possible via une stratégie simple :
+            chaque coalition perdante vote favori→1, leader→dernier
+  Retour  : bool (True = manipulation réussie)
+
+vote_utile(tdp_honnete, dist, scrutin)
+  Entrée  : tdp_honnete — tableau des préférences honnête
+            dist — matrice des distances
+            scrutin — fonction de scrutin à tester
+  Utilité : stratégie de report de voix — les électeurs dont le favori
+            est éliminé votent pour le candidat viable qu'ils préfèrent
+  Retour  : bool (True = manipulation réussie)
+
+optimisation_vote_groupe(tdp_honnete, dist, scrutin)
+  Entrée  : tdp_honnete — tableau des préférences honnête
+            dist — matrice des distances
+            scrutin — fonction de scrutin à tester
+  Utilité : manipulation exhaustive — explore toutes les permutations de
+            bulletins possibles (favori fixé en rang 1) pour chaque coalition
+            ⚠ Très coûteux en temps (nb_candidats! permutations)
+  Retour  : bool (True = manipulation réussie)
+
+
+───────────────────────────────────────────────────────────────────────
+  SIMULATION DE MANIPULABILITÉ
+───────────────────────────────────────────────────────────────────────
+
+simulation_manipulabilite(scrutin, nb_candidats, nb_votants,
+                           strategie_manipulation=manipulation_naïve,
+                           generateur_votants=distribution_uniforme,
+                           genenerateur_candidats=distribution_uniforme,
+                           nb_simulations=1000, candidats_fixes=None)
+  Entrée  : scrutin — fonction de scrutin à évaluer
+            nb_candidats (int) — nombre de candidats par simulation
+            nb_votants (int)   — nombre de votants par simulation
+            strategie_manipulation — fonction de manipulation à utiliser
+            generateur_votants — fonction générant les positions des votants
+            genenerateur_candidats — fonction générant les positions des candidats
+            nb_simulations (int) — nombre de paysages électoraux générés
+            candidats_fixes — tableau de candidats fixes (optionnel)
+  Utilité : estime le taux de manipulabilité d'un scrutin sur N simulations
+            et affiche les statistiques (taux, satisfaction, durée)
+  Retour  : dict {"taux_manipulation", "score_honnete_moyen", "scores_honnetes"}
+
+comparer_manipulabilite(scrutins, nb_candidats, nb_votants,
+                         strategie_manipulation=manipulation_naïve,
+                         generateur_votants=distribution_uniforme,
+                         generateur_candidats=distribution_uniforme,
+                         nb_simulations=1000, candidats_fixes=None)
+  Entrée  : scrutins (list) — liste de fonctions de scrutin à comparer
+            (autres paramètres identiques à simulation_manipulabilite)
+  Utilité : compare plusieurs scrutins sur les mêmes paysages électoraux
+            et affiche un graphique à barres (manipulation + satisfaction)
+  Retour  : dict {nom_scrutin: {"taux_manipulation", "satisfaction_moyenne"}}
+
+_plot_comparaison_manipulabilite(résultats, nom_strategie="")
+  Entrée  : résultats — dict retourné par comparer_manipulabilite
+            nom_strategie — nom de la stratégie (pour le titre)
+  Utilité : fonction interne — affiche le graphique comparatif
+
+
+───────────────────────────────────────────────────────────────────────
+  CONSISTANCE DES SATISFACTIONS
+───────────────────────────────────────────────────────────────────────
+
+consistance_satisfaction(scrutins, nb_candidats, nb_votants,
+                          metriques=None, strategies_manipulation=None,
+                          generateur_votants=distribution_uniforme,
+                          generateur_candidats=distribution_uniforme,
+                          nb_simulations=200)
+  Entrée  : scrutins (list) — liste de scrutins à évaluer
+            nb_candidats (int), nb_votants (int)
+            metriques (list) — fonctions de satisfaction à mesurer
+                               (défaut : [satisfaction_relative])
+            strategies_manipulation (list) — stratégies à tester (optionnel)
+            nb_simulations (int) — nombre de simulations, défaut 200
+  Utilité : analyse approfondie de la satisfaction et de la manipulabilité :
+            · statistiques (moyenne, médiane, écart-type, min, max)
+            · graphiques : courbes brutes + violins/boxplots + barres
+  Retour  : dict {"satisfaction": ..., "manipulation": ...}
+
+_plot_consistance_row(axes_row, résultats_metrique, noms, nom_metrique, ylim)
+  Utilité : fonction interne — affiche une ligne de graphiques (courbe + violin)
+
+_plot_manipulation_row(axes_row, res_manip, noms_scrutins, noms_strategies, ylim)
+  Utilité : fonction interne — affiche les barres de taux de manipulation
+
+
+───────────────────────────────────────────────────────────────────────
+  UTILITAIRES D'AFFICHAGE
+───────────────────────────────────────────────────────────────────────
+
+gagnant(résultats)
+  Entrée  : résultats — liste retournée par un scrutin
+  Utilité : extrait et retourne l'indice du candidat gagnant
+  Retour  : int
+
+plot_résultats(résultats, labels=None, title="Résultats du scrutin")
+  Entrée  : résultats — liste [[score, indice], ...]
+            labels (list) — noms des candidats (optionnel)
+  Utilité : affiche un graphique à barres des scores, trié par indice
+
+plot_résultats_triés(résultats, title="Résultats du scrutin triés")
+  Entrée  : résultats — liste [[score, indice], ...]
+  Utilité : affiche un graphique à barres trié par score décroissant
+
+plot_suffrage(votants, candidats, titre=..., noms_dims=None)
+  Entrée  : votants   — tableau (nb_votants, dim)
+            candidats — tableau (nb_candidats, dim)
+            noms_dims — noms des axes (optionnel)
+  Utilité : visualise les positions des votants et candidats dans l'espace
+            · dim=1 : histogramme des votants + étoiles pour les candidats
+            · dim=2 : nuage de points 2D (votants bleus, candidats rouges)
+            · dim≥3 : matrice pairwise (histogrammes + scatter)
+
+
+───────────────────────────────────────────────────────────────────────
+  TESTS
+───────────────────────────────────────────────────────────────────────
+
+_ok(condition, message)
+  Entrée  : condition (bool), message (str)
+  Utilité : affiche ✅ OK ou ❌ ÉCHEC selon la condition
+  Retour  : bool
+
+run_tests()
+  Utilité : lance la suite complète de tests automatisés couvrant :
+            · formes des générateurs (dim 1 à 5)
+            · matrice des distances (valeurs, shapes, propriétés géométriques)
+            · tableau des préférences (shape, permutations, cohérence)
+            · scrutins (format de sortie, tri)
+            · cas manuel dim=1
+            · scores de satisfaction
+            · simulation complète multi-dimensions
+            · déterminisme des scrutins
+  Retour  : bool (True = tous les tests passés)
+
+═══════════════════════════════════════════════════════════════════════

@@ -1,0 +1,11 @@
+creation sondages
+distances
+tableau_des_préférences
+SM1T
+SM2T
+Borda_classique
+Copeland
+satisfaction(distance)
+satisfaction(tableau_des_preferences)
+manipulation_naïve
+vote_utile
